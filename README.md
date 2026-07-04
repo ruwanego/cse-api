@@ -120,6 +120,46 @@ Useful discovered parameter values:
 - `getEvents(...)`: observed `eventType` value is `"OT"`.
 - `getCompanyAnnouncements(symbol)`: use full security symbols such as `"LOLC.N0000"`.
 
+## Raw to Client Mapping
+
+This table is for orientation when comparing CSE's upstream web endpoints to this package's normalized API. Application code should prefer the client methods.
+
+| Upstream CSE endpoint | Client method | Useful params | Normalized shape |
+| --- | --- | --- | --- |
+| `marketStatus` | `getMarketStatus()` | none | `MarketStatus` |
+| `marketSummery` | `getMarketSummary()` | none | `MarketSummary` |
+| `aspiData` | `getAspi()` | none | `IndexData` |
+| `snpData` | `getSnpSriLanka20()` | none | `IndexData` |
+| `allSectors` | `getSectors()` | none | `Sector[]` |
+| `chartData` | `getMarketChart(index, period)` | `index: "ASPI" \| "SNP_SL_20"`, `period` | `MarketChart` |
+| `companyInfoSummery` | `getCompany(symbol)` | full symbol, e.g. `LOLC.N0000` | `Company` |
+| `companyChartDataByStock` | `getCompanyChart(symbol, period)` | full symbol, `period` | `CompanyChart` |
+| `allSecurityCode` | `getSecurityCodes()` | none | `SecurityCode[]` |
+| `cntSecurity` | `getSecurities()` | none | `Security[]` |
+| `todaySharePrice` | `getTodayPrices()` | none | `PriceRow[]` |
+| `topGainers` | `getTopGainers()` | none | `PriceRow[]` |
+| `topLooses` | `getTopLosers()` | none | `PriceRow[]` |
+| `mostActiveTrades` | `getMostActiveTrades()` | none | `PriceRow[]` |
+| `tradeSummary` | `getTradeSummary()` | none | `TradeSummaryRow[]` |
+| `detailedTrades` | `getDetailedTrades(symbol?)` | optional full symbol | `DetailedTradeRow[]` |
+| `dailyMarketSummery` | `getDailyMarketSummary()` | none | object rows |
+| `approvedAnnouncement` | `getApprovedAnnouncements()` | none | `Announcement[]` |
+| `getFinancialAnnouncement` | `getFinancialAnnouncements()` | none | `Announcement[]` |
+| `getNewListingsRelatedNoticesAnnouncements` | `getNewListingsAnnouncements()` | none | `Announcement[]` |
+| `getBuyInBoardAnnouncements` | `getBuyInBoardAnnouncements()` | none | `Announcement[]` |
+| `getCOVIDAnnouncements` | `getCovidAnnouncements()` | none | `Announcement[]` |
+| `circularAnnouncement` | `getCircularAnnouncements()` | none | `Announcement[]` |
+| `directiveAnnouncement` | `getDirectiveAnnouncements()` | none | `Announcement[]` |
+| `getNonComplianceAnnouncements` | `getNonComplianceAnnouncements()` | none | `Announcement[]` |
+| `getAnnouncementByCompany` | `getCompanyAnnouncements(symbol)` | full symbol | `Announcement[]` |
+| `getAnnouncementById` | `getAnnouncement(announcementId)` | announcement ID | `AnnouncementDetail` |
+| `corporateAnnouncementCategory` | `getCorporateAnnouncementCategories()` | none | `CorporateAnnouncementCategory[]` |
+| `smd/categories` | `getSmdCategories()` | none | `string[]` |
+| `news/web` | `getNews(options)` / `getTopNews(options)` | `type`, `top`, `year`, `security`, `numberOfRecord` | `NewsItem[]` |
+| `events` / `events/top` | `getEvents(options)` / `getTopEvents(options)` | `eventType`, `year`, `numberOfRecord` | `EventItem[]` |
+| `educationalVideos` | `getEducationalVideos()` | none | `EducationalVideo[]` |
+| `notifications` | `getNotifications()` | none | `WebsiteNotification[]` |
+
 ## Raw Escape Hatch
 
 Use `raw()` only when debugging upstream behavior or testing an endpoint that is not normalized yet.
