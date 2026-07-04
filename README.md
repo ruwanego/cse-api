@@ -42,11 +42,68 @@ Base URL: `https://www.cse.lk/api/`
 | allSectors                                | Data for all sectors                               | POST        |                                      |
 | detailedTrades                            | Detailed Trades                                    | POST        |                                      |
 | dailyMarketSummery                        | Daily Market Summary                               | POST        |                                      |
-|companyChartDataByStock                    | Company Chart Data By Stock                        | POST        | stockId , period=1                                     |
+| companyChartDataByStock                   | Company chart data by security ID                  | POST        | stockId, period                         |
 
 ---
 
 visit <a href='https://github.com/GH0STH4CKER/Colombo-Stock-Exchange-CSE-API-Documentation/blob/main/api_endpoint_urls.txt'>this link</a> to view all complete endpoint urls.
+
+### Get company chart data by stock/security ID
+
+`companyChartDataByStock` expects `stockId` to be the security ID, not the logo ID. You can get the security ID from `companyInfoSummery.reqSymbolBetaInfo.securityId`.
+
+```python
+import requests
+
+base_url = "https://www.cse.lk/api/"
+
+info = requests.post(
+    base_url + "companyInfoSummery",
+    data={"symbol": "LOLC.N0000"},
+).json()
+
+security_id = info["reqSymbolBetaInfo"]["securityId"]
+
+chart = requests.post(
+    base_url + "companyChartDataByStock",
+    data={"stockId": security_id, "period": 1},
+).json()
+
+print(chart["id"])
+print(chart["chartData"][:1])
+```
+
+Working test request:
+
+```text
+POST https://www.cse.lk/api/companyChartDataByStock
+stockId=378&period=1
+```
+
+Observed response shape:
+
+```json
+{
+  "chartData": [
+    {
+      "h": 54.7,
+      "l": 54.7,
+      "o": null,
+      "s": 57118421,
+      "q": 918,
+      "p": 54.7,
+      "c": -0.1,
+      "pc": -0.18248175182481752,
+      "t": 1783051488212,
+      "n": null,
+      "id": 57118421
+    }
+  ],
+  "id": 378
+}
+```
+
+Known working numeric `period` values include `1`, `7`, `30`, `90`, and `365`. String values such as `1D`, `1M`, `3M`, `1Y`, and `YTD` returned `400` in testing.
 
 ## Usage Example 💻python
 

@@ -91,7 +91,7 @@
               "changePercentage": 5.215827338129497
           },
         ]
-      }</details>
+      }</pre></div></details>
 
     <details class="endpoint"><summary>Daily Market Summary</summary><div class="endpoint-content"><p><strong>URL:</strong> <code>https://www.cse.lk/api/dailyMarketSummery</code></p><p><strong>Parameters:</strong> None</p><p><strong>Example Response:</strong></p><pre>
     [
@@ -137,8 +137,26 @@
         }
       ],
     ]
-    </details>
-    <details class="endpoint"><summary>companyChartDataByStock</summary><div class="endpoint-content"><pre>{"reqTradeSummery": {'chartData': [{'h': 562.0, 'l': 562.0, 'o': None, 's': 51866050, 'q': 32, 'p': 562.0, 'c': 1.75, 'pc': 0.31236055332440876, 't': 1762401600377, 'n': None, 'id': 51866050}, ...}]}</pre></div></details>
+    </pre></div></details>
+    <details class="endpoint"><summary>companyChartDataByStock</summary><div class="endpoint-content"><p><strong>URL:</strong> <code>https://www.cse.lk/api/companyChartDataByStock</code></p><p><strong>Parameters:</strong> <code>stockId</code> (security ID, required), <code>period</code> (numeric, required)</p><p>Use <code>companyInfoSummery.reqSymbolBetaInfo.securityId</code> as <code>stockId</code>. Do not use <code>reqLogo.id</code>; that is a logo record ID and may return an empty chart.</p><p><strong>Working request:</strong></p><pre>POST https://www.cse.lk/api/companyChartDataByStock
+stockId=378&amp;period=1</pre><p><strong>Observed Response Shape:</strong></p><pre>{
+  "chartData": [
+    {
+      "h": 54.7,
+      "l": 54.7,
+      "o": null,
+      "s": 57118421,
+      "q": 918,
+      "p": 54.7,
+      "c": -0.1,
+      "pc": -0.18248175182481752,
+      "t": 1783051488212,
+      "n": null,
+      "id": 57118421
+    }
+  ],
+  "id": 378
+}</pre><p>Known working numeric period values include <code>1</code>, <code>7</code>, <code>30</code>, <code>90</code>, and <code>365</code>.</p></div></details>
   </section>
 </body>
 </html>
