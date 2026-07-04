@@ -5,15 +5,16 @@ type ResponseSpec = { status?: number; body: unknown };
 
 function createFetch(responses: Record<string, ResponseSpec[]>): {
   fetch: typeof fetch;
-  calls: Array<{ endpoint: string; body: string }>;
+  calls: Array<{ method: string; endpoint: string; query: string; body: string }>;
 } {
-  const calls: Array<{ endpoint: string; body: string }> = [];
+  const calls: Array<{ method: string; endpoint: string; query: string; body: string }> = [];
 
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-    const url = String(input);
-    const endpoint = url.slice(url.lastIndexOf("/") + 1);
+    const url = new URL(String(input));
+    const endpoint = url.pathname.slice(url.pathname.lastIndexOf("/") + 1);
     const body = init?.body instanceof URLSearchParams ? init.body.toString() : String(init?.body ?? "");
-    calls.push({ endpoint, body });
+    const method = init?.method ?? "GET";
+    calls.push({ method, endpoint, query: url.searchParams.toString(), body });
 
     const queue = responses[endpoint];
     const next = queue?.shift();
@@ -77,8 +78,8 @@ describe("CseClient", () => {
       timestamp: 1783051488212,
     });
     expect(calls).toEqual([
-      { endpoint: "companyInfoSummery", body: "symbol=LOLC.N0000" },
-      { endpoint: "companyChartDataByStock", body: "stockId=378&period=1" },
+      { method: "POST", endpoint: "companyInfoSummery", query: "", body: "symbol=LOLC.N0000" },
+      { method: "POST", endpoint: "companyChartDataByStock", query: "", body: "stockId=378&period=1" },
     ]);
   });
 
@@ -91,7 +92,7 @@ describe("CseClient", () => {
     const losers = await client.getTopLosers();
 
     expect(losers).toEqual([{ symbol: "CFLB.N0000", changePercentage: -7.27 }]);
-    expect(calls).toEqual([{ endpoint: "topLooses", body: "" }]);
+    expect(calls).toEqual([{ method: "POST", endpoint: "topLooses", query: "", body: "" }]);
   });
 
   it("rejects unsupported chart periods before making a request", async () => {
@@ -126,5 +127,80 @@ describe("CseClient", () => {
     const client = new CseClient({ fetch });
 
     await expect(client.getDailyMarketSummary()).resolves.toEqual([{ id: 26367, marketTurnover: 1541395970 }]);
+  });
+
+  it("fetches securities from discovered GET endpoints", async () => {
+    const { fetch, calls } = createFetch({
+      allSecurityCode: [{ body: [{ id: 204, name: "ABANS ELECTRICALS PLC", symbol: "ABAN.N0000", active: 1 }] }],
+      cntSecurity: [{ body: { status: "OK", content: [{ securityId: 642, name: "ABANS ELECTRICALS PLC", symbol: "ABAN" }] } }],
+    });
+    const client = new CseClient({ fetch });
+
+    await expect(client.getSecurityCodes()).resolves.toEqual([
+      { id: 204, name: "ABANS ELECTRICALS PLC", symbol: "ABAN.N0000", active: 1 },
+    ]);
+    await expect(client.getSecurities()).resolves.toEqual([
+      { securityId: 642, name: "ABANS ELECTRICALS PLC", symbol: "ABAN" },
+    ]);
+    expect(calls).toEqual([
+      { method: "GET", endpoint: "allSecurityCode", query: "", body: "" },
+      { method: "GET", endpoint: "cntSecurity", query: "", body: "" },
+    ]);
+  });
+
+  it("maps market chart index names to upstream chart ids", async () => {
+    const { fetch, calls } = createFetch({
+      chartData: [{ body: [{ d: 1783051200000, v: 6204.54, pc: null }] }],
+    });
+    const client = new CseClient({ fetch });
+
+    const chart = await client.getMarketChart("SNP_SL_20", 1);
+
+    expect(chart).toMatchObject({
+      index: "SNP_SL_20",
+      chartId: 40,
+      points: [{ date: 1783051200000, value: 6204.54, percentChange: null }],
+    });
+    expect(calls).toEqual([{ method: "POST", endpoint: "chartData", query: "", body: "chartId=40&period=1" }]);
+  });
+
+  it("fetches company announcements by symbol", async () => {
+    const { fetch, calls } = createFetch({
+      getAnnouncementByCompany: [{ body: { reqCompanyAnnouncement: [{ announcementId: 34388, symbol: "LOLC.N0000" }] } }],
+    });
+    const client = new CseClient({ fetch });
+
+    await expect(client.getCompanyAnnouncements("LOLC.N0000")).resolves.toEqual([
+      { announcementId: 34388, symbol: "LOLC.N0000" },
+    ]);
+    expect(calls).toEqual([
+      { method: "POST", endpoint: "getAnnouncementByCompany", query: "", body: "symbol=LOLC.N0000" },
+    ]);
+  });
+
+  it("flattens grouped news responses and passes discovered query params", async () => {
+    const { fetch, calls } = createFetch({
+      web: [{ body: { CN: [{ id: "news-1", title: "Market notice" }] } }],
+    });
+    const client = new CseClient({ fetch });
+
+    await expect(client.getTopNews({ type: "CN", numberOfRecord: 3 })).resolves.toEqual([
+      { id: "news-1", title: "Market notice" },
+    ]);
+    expect(calls).toEqual([
+      { method: "GET", endpoint: "web", query: "top=true&type=CN&numberOfRecord=3", body: "" },
+    ]);
+  });
+
+  it("reads content arrays from public website endpoints", async () => {
+    const { fetch, calls } = createFetch({
+      notifications: [{ body: { status: "OK", content: [{ id: "n1", title: "NOTICE" }] } }],
+    });
+    const client = new CseClient({ fetch });
+
+    await expect(client.getNotifications()).resolves.toEqual([{ id: "n1", title: "NOTICE" }]);
+    expect(calls).toEqual([
+      { method: "GET", endpoint: "notifications", query: "", body: "" },
+    ]);
   });
 });

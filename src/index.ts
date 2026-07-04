@@ -1,5 +1,7 @@
 export type JsonObject = Record<string, unknown>;
 export type ChartPeriod = 1 | 7 | 30 | 90 | 365;
+export type MarketChartIndex = "ASPI" | "SNP_SL_20";
+export type NewsType = "CN" | "BN" | "MR";
 
 export interface CseClientOptions {
   baseUrl?: string;
@@ -74,6 +76,21 @@ export interface Sector extends JsonObject {
   indexName?: string;
 }
 
+export interface SecurityCode extends JsonObject {
+  id?: number;
+  name?: string;
+  symbol?: string;
+  active?: number;
+}
+
+export interface Security extends JsonObject {
+  securityId?: number;
+  name?: string;
+  symbol?: string;
+  boardId?: number;
+  deleted?: number;
+}
+
 export interface CompanyChart {
   symbol: string;
   securityId: number;
@@ -97,6 +114,20 @@ export interface CompanyChartPoint {
   raw: JsonObject;
 }
 
+export interface MarketChart {
+  index: MarketChartIndex;
+  chartId: number;
+  period: ChartPeriod;
+  points: MarketChartPoint[];
+}
+
+export interface MarketChartPoint {
+  date?: number;
+  value?: number;
+  percentChange?: number | null;
+  raw: JsonObject;
+}
+
 export interface Announcement extends JsonObject {
   id?: number;
   announcementId?: number;
@@ -107,6 +138,60 @@ export interface Announcement extends JsonObject {
   announcementCategory?: string;
   fileText?: string;
   path?: string;
+}
+
+export interface AnnouncementDetail extends JsonObject {
+  reqBaseAnnouncement?: JsonObject;
+  reqAnnouncementDocs?: JsonObject[];
+}
+
+export interface CorporateAnnouncementCategory extends JsonObject {
+  id?: number;
+  categoryName?: string;
+  pageName?: string;
+  pageView?: string;
+  methodName?: string;
+}
+
+export interface NewsOptions {
+  type?: NewsType | string;
+  top?: boolean;
+  year?: number;
+  security?: string;
+  numberOfRecord?: number;
+}
+
+export interface NewsItem extends JsonObject {
+  id?: string;
+  title?: string;
+  shortDescription?: string;
+  publishedDate?: string;
+}
+
+export interface EventOptions {
+  eventType?: string;
+  year?: number;
+  numberOfRecord?: number;
+}
+
+export interface EventItem extends JsonObject {
+  id?: string;
+  eventType?: string;
+  title?: string;
+  body?: string;
+}
+
+export interface EducationalVideo extends JsonObject {
+  id?: string;
+  link?: string;
+  isHome?: boolean;
+  lang?: string;
+}
+
+export interface WebsiteNotification extends JsonObject {
+  id?: string;
+  title?: string;
+  body?: string;
 }
 
 export class CseApiError extends Error {
@@ -141,6 +226,10 @@ const DEFAULT_BASE_URL = "https://www.cse.lk/api";
 const DEFAULT_TIMEOUT_MS = 20_000;
 const DEFAULT_USER_AGENT = "cse-api-js/0.1.0";
 const CHART_PERIODS = new Set<number>([1, 7, 30, 90, 365]);
+const MARKET_CHART_IDS: Record<MarketChartIndex, number> = {
+  ASPI: 1,
+  SNP_SL_20: 40,
+};
 
 export class CseClient {
   private readonly baseUrl: string;
@@ -162,6 +251,10 @@ export class CseClient {
 
   async raw(endpoint: string, data: Record<string, string | number | boolean | null | undefined> = {}): Promise<unknown> {
     return this.post(endpoint, data);
+  }
+
+  async rawGet(endpoint: string, params: Record<string, string | number | boolean | null | undefined> = {}): Promise<unknown> {
+    return this.get(endpoint, params);
   }
 
   async getCompany(symbol: string): Promise<Company> {
@@ -222,6 +315,30 @@ export class CseClient {
     };
   }
 
+  async getMarketChart(index: MarketChartIndex, period: ChartPeriod = 1): Promise<MarketChart> {
+    this.requireChartPeriod(period);
+    const chartId = MARKET_CHART_IDS[index];
+    if (chartId === undefined) {
+      throw new CseValidationError("index must be ASPI or SNP_SL_20.");
+    }
+
+    const rows = topLevelRecords(await this.post("chartData", { chartId, period }), "chartData");
+    return {
+      index,
+      chartId,
+      period,
+      points: rows.map(normalizeMarketChartPoint),
+    };
+  }
+
+  async getSecurityCodes(): Promise<SecurityCode[]> {
+    return this.getTopLevelArray("allSecurityCode");
+  }
+
+  async getSecurities(): Promise<Security[]> {
+    return this.getContentArray("cntSecurity");
+  }
+
   async getTradeSummary(): Promise<TradeSummaryRow[]> {
     return this.objectArray("tradeSummary", "reqTradeSummery");
   }
@@ -272,6 +389,74 @@ export class CseClient {
 
   async getNonComplianceAnnouncements(): Promise<Announcement[]> {
     return this.objectArray("getNonComplianceAnnouncements", "nonComplianceAnnouncements");
+  }
+
+  async getAnnouncement(announcementId: number): Promise<AnnouncementDetail> {
+    if (!Number.isInteger(announcementId) || announcementId <= 0) {
+      throw new CseValidationError("announcementId must be a positive integer.");
+    }
+
+    return asRecord(await this.post("getAnnouncementById", { announcementId }), "getAnnouncementById") as AnnouncementDetail;
+  }
+
+  async getCompanyAnnouncements(symbol: string): Promise<Announcement[]> {
+    this.requireSymbol(symbol);
+    return this.objectArray("getAnnouncementByCompany", "reqCompanyAnnouncement", { symbol });
+  }
+
+  async getCorporateAnnouncementCategories(): Promise<CorporateAnnouncementCategory[]> {
+    return this.getTopLevelArray("corporateAnnouncementCategory");
+  }
+
+  async getSmdCategories(): Promise<string[]> {
+    const raw = await this.get("smd/categories");
+    if (!Array.isArray(raw)) {
+      throw new CseEmptyDataError("smd/categories", "Expected smd/categories to return a JSON array.");
+    }
+
+    return raw.filter((value): value is string => typeof value === "string");
+  }
+
+  async getEducationalVideos(): Promise<EducationalVideo[]> {
+    return this.getContentArray("educationalVideos");
+  }
+
+  async getNotifications(): Promise<WebsiteNotification[]> {
+    return this.getContentArray("notifications");
+  }
+
+  async getNews(options: NewsOptions = {}): Promise<NewsItem[]> {
+    const params = cleanParams({
+      top: options.top ?? false,
+      type: options.type,
+      year: options.year,
+      security: options.security,
+      numberOfRecord: options.numberOfRecord,
+    });
+    return groupedRecords(await this.get("news/web", params), "news/web") as NewsItem[];
+  }
+
+  async getTopNews(options: Omit<NewsOptions, "top"> = {}): Promise<NewsItem[]> {
+    return this.getNews({ ...options, top: true, numberOfRecord: options.numberOfRecord ?? 3 });
+  }
+
+  async getEvents(options: EventOptions = {}): Promise<EventItem[]> {
+    const params = cleanParams({
+      eventType: options.eventType ?? "OT",
+      year: options.year ?? new Date().getFullYear(),
+    });
+    return groupedRecords(await this.get("events", params), "events") as EventItem[];
+  }
+
+  async getTopEvents(options: EventOptions = {}): Promise<EventItem[]> {
+    const params = cleanParams({
+      top: true,
+      eventType: options.eventType ?? "OT",
+      year: options.year ?? new Date().getFullYear(),
+      numberOfRecord: options.numberOfRecord ?? 3,
+    });
+    const raw = await this.get("events/top", params);
+    return Array.isArray(raw) ? raw.filter(isRecord) as EventItem[] : [];
   }
 
   async getMarketStatus(): Promise<MarketStatus> {
@@ -340,6 +525,57 @@ export class CseClient {
     return topLevelRecords(raw, endpoint) as T[];
   }
 
+  private async getTopLevelArray<T extends JsonObject>(
+    endpoint: string,
+    params: Record<string, string | number | boolean | null | undefined> = {},
+  ): Promise<T[]> {
+    const raw = await this.get(endpoint, params);
+    return topLevelRecords(raw, endpoint) as T[];
+  }
+
+  private async getContentArray<T extends JsonObject>(
+    endpoint: string,
+    params: Record<string, string | number | boolean | null | undefined> = {},
+  ): Promise<T[]> {
+    const raw = await this.get(endpoint, params);
+    const root = asRecord(raw, endpoint);
+    return arrayProperty(root, "content") as T[];
+  }
+
+  private async get(
+    endpoint: string,
+    params: Record<string, string | number | boolean | null | undefined> = {},
+  ): Promise<unknown> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const query = new URLSearchParams();
+
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null) {
+        query.set(key, String(value));
+      }
+    }
+
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${this.baseUrl}/${endpoint}${suffix}`, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "User-Agent": this.userAgent,
+        },
+        signal: controller.signal,
+      });
+    } catch (error) {
+      throw new CseApiError(`Request to ${endpoint} failed: ${errorMessage(error)}`, { endpoint });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    return parseResponse(endpoint, response);
+  }
+
   private async post(
     endpoint: string,
     data: Record<string, string | number | boolean | null | undefined> = {},
@@ -372,25 +608,7 @@ export class CseClient {
       clearTimeout(timeout);
     }
 
-    const text = await response.text();
-
-    if (!response.ok) {
-      throw new CseApiError(`CSE API request failed for ${endpoint} with HTTP ${response.status}.`, {
-        endpoint,
-        status: response.status,
-        body: text.slice(0, 500),
-      });
-    }
-
-    try {
-      return JSON.parse(text) as unknown;
-    } catch (error) {
-      throw new CseApiError(`CSE API returned invalid JSON for ${endpoint}: ${errorMessage(error)}`, {
-        endpoint,
-        status: response.status,
-        body: text.slice(0, 500),
-      });
-    }
+    return parseResponse(endpoint, response);
   }
 
   private requireSymbol(symbol: string): void {
@@ -419,6 +637,15 @@ function normalizeChartPoint(raw: JsonObject): CompanyChartPoint {
     timestamp: numberValue(raw.t),
     name: nullableString(raw.n),
     id: numberValue(raw.id),
+    raw,
+  };
+}
+
+function normalizeMarketChartPoint(raw: JsonObject): MarketChartPoint {
+  return {
+    date: numberValue(raw.d),
+    value: numberValue(raw.v),
+    percentChange: nullableNumber(raw.pc),
     raw,
   };
 }
@@ -458,6 +685,25 @@ function topLevelRecords(value: unknown, endpoint: string): JsonObject[] {
   });
 }
 
+function groupedRecords(value: unknown, endpoint: string): JsonObject[] {
+  if (Array.isArray(value)) {
+    return value.filter(isRecord);
+  }
+
+  const root = asRecord(value, endpoint);
+  return Object.values(root).flatMap((item) => Array.isArray(item) ? item.filter(isRecord) : []);
+}
+
+function cleanParams(
+  params: Record<string, string | number | boolean | null | undefined>,
+): Record<string, string | number | boolean> {
+  return Object.fromEntries(
+    Object.entries(params).filter((entry): entry is [string, string | number | boolean] => (
+      entry[1] !== undefined && entry[1] !== null
+    )),
+  );
+}
+
 function isRecord(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -480,4 +726,26 @@ function nullableString(value: unknown): string | null | undefined {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function parseResponse(endpoint: string, response: Response): Promise<unknown> {
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new CseApiError(`CSE API request failed for ${endpoint} with HTTP ${response.status}.`, {
+      endpoint,
+      status: response.status,
+      body: text.slice(0, 500),
+    });
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch (error) {
+    throw new CseApiError(`CSE API returned invalid JSON for ${endpoint}: ${errorMessage(error)}`, {
+      endpoint,
+      status: response.status,
+      body: text.slice(0, 500),
+    });
+  }
 }

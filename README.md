@@ -1,32 +1,23 @@
-# Colombo Stock Exchange (CSE) API 📈🏢
+# cse-api
 
-> **Unofficial API docs and typed TypeScript client**  
-> Explore stock market data from the Colombo Stock Exchange (CSE) via their public API endpoints — reverse-engineered since no official documentation exists. 🔍
+Typed Node.js client and TypeSpec contract for the unofficial Colombo Stock Exchange web API.
 
----
+`cse-api` gives application code a small, predictable API instead of exposing the raw CSE web endpoints directly. The wrapper keeps upstream quirks internal: read-only `POST` requests, misspelled endpoint names, inconsistent JSON shapes, and the `symbol -> securityId` lookup required for company chart data.
 
-<b>Visit <a href='https://gh0sth4cker.github.io/Colombo-Stock-Exchange-CSE-API-Documentation/'>this link</a> to see web view<b>
+This package is unofficial and is not affiliated with the Colombo Stock Exchange.
 
-## Overview 📋
-
-The Colombo Stock Exchange provides real-time and historical stock data via several public endpoints used by their web portal.  
-This repository documents known raw endpoints and provides a cleaner Node.js TypeScript client that hides the awkward upstream API shape.
-
-## Attribution
-
-The original raw endpoint discovery and documentation came from [`GH0STH4CKER/Colombo-Stock-Exchange-CSE-API-Documentation`](https://github.com/GH0STH4CKER/Colombo-Stock-Exchange-CSE-API-Documentation). Credit to that project for mapping the first usable set of CSE web endpoints.
-
-This repository is not maintained as a GitHub fork because its purpose has diverged: it now provides a TypeSpec-described, typed TypeScript client with a normalized API surface instead of only mirroring the upstream documentation.
-
----
-
-## TypeScript Client
-
-The wrapper exposes sane method names and typed responses while translating internally to the current CSE endpoints.
+## Install
 
 ```bash
 npm install github:ruwanego/cse-api
 ```
+
+Requirements:
+
+- Node.js 20 or newer
+- ESM import support
+
+## Quick Start
 
 ```ts
 import { CseClient } from "cse-api";
@@ -38,30 +29,57 @@ const company = await cse.getCompany("LOLC.N0000");
 const chart = await cse.getCompanyChart("LOLC.N0000", 1);
 
 console.log(status.status);
-console.log(company.securityId);
-console.log(chart.points[0]);
+console.log(company.name, company.securityId);
+console.log(chart.points.at(-1));
 ```
 
-### Clean API Surface
+## Stable Demo
+
+Run the live demo to exercise every stable public method against the current CSE backend:
+
+```bash
+npm run demo:stable
+```
+
+The demo builds the package, calls the normalized client methods, and prints compact counts or key values for each response. It exits with a nonzero status if any stable call fails.
+
+## Client API
+
+Market data:
 
 ```ts
-await cse.getCompany("LOLC.N0000");
-await cse.getCompanyChart("LOLC.N0000", 1); // periods: 1, 7, 30, 90, 365
-await cse.getTradeSummary();
-await cse.getTodayPrices();
-await cse.getTopGainers();
-await cse.getTopLosers();
-await cse.getMostActiveTrades();
 await cse.getMarketStatus();
 await cse.getMarketSummary();
 await cse.getAspi();
 await cse.getSnpSriLanka20();
 await cse.getSectors();
+await cse.getMarketChart("ASPI", 1);
+await cse.getMarketChart("SNP_SL_20", 1);
+```
+
+Company and price data:
+
+```ts
+await cse.getCompany("LOLC.N0000");
+await cse.getCompanyChart("LOLC.N0000", 1);
+await cse.getSecurityCodes();
+await cse.getSecurities();
+await cse.getTodayPrices();
+await cse.getTopGainers();
+await cse.getTopLosers();
+await cse.getMostActiveTrades();
+```
+
+Trades:
+
+```ts
+await cse.getTradeSummary();
 await cse.getDetailedTrades();
+await cse.getDetailedTrades("LOLC.N0000");
 await cse.getDailyMarketSummary();
 ```
 
-Announcement helpers are also included:
+Announcements:
 
 ```ts
 await cse.getNewListingsAnnouncements();
@@ -72,177 +90,115 @@ await cse.getFinancialAnnouncements();
 await cse.getCircularAnnouncements();
 await cse.getDirectiveAnnouncements();
 await cse.getNonComplianceAnnouncements();
+await cse.getCompanyAnnouncements("LOLC.N0000");
+await cse.getAnnouncement(37911);
+await cse.getCorporateAnnouncementCategories();
+await cse.getSmdCategories();
 ```
 
-For debugging undocumented behavior, use the raw escape hatch:
+Chart periods are intentionally limited to the values observed working against the current CSE backend:
 
 ```ts
-await cse.raw("companyInfoSummery", { symbol: "LOLC.N0000" });
+type ChartPeriod = 1 | 7 | 30 | 90 | 365;
 ```
 
-### TypeSpec
+Public CSE website content:
 
-The clean public API is described in `tsp/main.tsp`. It intentionally models the wrapper API, not the messy upstream CSE wire contract.
+```ts
+await cse.getNews({ type: "CN", top: false });
+await cse.getTopNews({ type: "CN", numberOfRecord: 3 });
+await cse.getEvents({ eventType: "OT", year: 2026 });
+await cse.getTopEvents({ eventType: "OT", year: 2026, numberOfRecord: 3 });
+await cse.getEducationalVideos();
+await cse.getNotifications();
+```
+
+Useful discovered parameter values:
+
+- `getMarketChart(index, period)`: `index` is `"ASPI"` or `"SNP_SL_20"`.
+- `getNews(...)`: observed `type` values are `"CN"` for CSE notices, `"BN"` for business news, and `"MR"` for market reports.
+- `getEvents(...)`: observed `eventType` value is `"OT"`.
+- `getCompanyAnnouncements(symbol)`: use full security symbols such as `"LOLC.N0000"`.
+
+## Raw Escape Hatch
+
+Use `raw()` only when debugging upstream behavior or testing an endpoint that is not normalized yet.
+
+```ts
+const raw = await cse.raw("companyInfoSummery", {
+  symbol: "LOLC.N0000",
+});
+```
+
+The raw endpoint names are not part of the clean public API. Prefer the typed methods above for application code.
+
+## Errors
+
+The client raises typed errors:
+
+- `CseApiError`: network failure, non-2xx response, or invalid JSON
+- `CseEmptyDataError`: upstream returned a shape that cannot satisfy the normalized method
+- `CseValidationError`: invalid client-side input, such as an unsupported chart period
+
+```ts
+import { CseApiError, CseClient } from "cse-api";
+
+const cse = new CseClient({ timeoutMs: 60_000 });
+
+try {
+  await cse.getCompanyChart("LOLC.N0000", 1);
+} catch (error) {
+  if (error instanceof CseApiError) {
+    console.error(error.endpoint, error.status, error.body);
+  }
+  throw error;
+}
+```
+
+## TypeSpec
+
+The normalized API contract lives in `tsp/main.tsp`.
 
 ```bash
 npm run typespec:compile
 ```
 
----
+The generated OpenAPI output is a description of this package's clean API surface. It is not a direct description of the raw CSE backend.
 
-## API Endpoints 🔗
+## Development
 
-Base URL: `https://www.cse.lk/api/`
-
-| Endpoint                                  | Description                                        | HTTP Method | Required Params/Data                  |
-| ----------------------------------------- | -------------------------------------------------- | ----------- | ------------------------------------ |
-| companyInfoSummery                        | Detailed info of a single stock/security by symbol | POST        | symbol                               |
-| tradeSummary                              | Summary of trades for all securities               | POST        |                                      |
-| todaySharePrice                           | Today's share price data                           | POST        |                                      |
-| topGainers                                | List of top gaining stocks                         | POST        |                                      |
-| topLooses                                 | List of top losing stocks                          | POST        |                                      |
-| mostActiveTrades                          | Most active trades by volume                       | POST        |                                      |
-| getNewListingsRelatedNoticesAnnouncements | New listings and related announcements             | POST        |                                      |
-| getBuyInBoardAnnouncements                | Buy-in board announcements                         | POST        |                                      |
-| approvedAnnouncement                      | Approved announcements                             | POST        |                                      |
-| getCOVIDAnnouncements                     | COVID-related announcements                        | POST        |                                      |
-| getFinancialAnnouncement                  | Financial announcements                            | POST        |                                      |
-| circularAnnouncement                      | Circular announcements                             | POST        |                                      |
-| directiveAnnouncement                     | Directive announcements                             | POST       |                                      |
-| getNonComplianceAnnouncements             | Non-compliance announcements                       | POST        |                                      |
-| marketStatus                              | Market open/close status                           | POST        |                                      |
-| marketSummery                             | Market summary data                                | POST        |                                      |
-| aspiData                                  | All Share Price Index data                         | POST        |                                      |
-| snpData                                   | S&P Sri Lanka 20 Index data                        | POST        |                                      |
-| chartData                                 | Chart data for stocks                              | POST        | symbol, chartId, period              |
-| allSectors                                | Data for all sectors                               | POST        |                                      |
-| detailedTrades                            | Detailed Trades                                    | POST        |                                      |
-| dailyMarketSummery                        | Daily Market Summary                               | POST        |                                      |
-| companyChartDataByStock                   | Company chart data by security ID                  | POST        | stockId, period                         |
-
----
-
-visit <a href='https://github.com/GH0STH4CKER/Colombo-Stock-Exchange-CSE-API-Documentation/blob/main/api_endpoint_urls.txt'>this link</a> to view all complete endpoint urls.
-
-### Get company chart data by stock/security ID
-
-`companyChartDataByStock` expects `stockId` to be the security ID, not the logo ID. You can get the security ID from `companyInfoSummery.reqSymbolBetaInfo.securityId`.
-
-```python
-import requests
-
-base_url = "https://www.cse.lk/api/"
-
-info = requests.post(
-    base_url + "companyInfoSummery",
-    data={"symbol": "LOLC.N0000"},
-).json()
-
-security_id = info["reqSymbolBetaInfo"]["securityId"]
-
-chart = requests.post(
-    base_url + "companyChartDataByStock",
-    data={"stockId": security_id, "period": 1},
-).json()
-
-print(chart["id"])
-print(chart["chartData"][:1])
+```bash
+npm install
+npm run check
+npm run build
 ```
 
-Working test request:
+Scripts:
+
+- `npm run typecheck`: TypeScript type check
+- `npm test`: mocked unit tests
+- `npm run typespec:compile`: compile the TypeSpec contract
+- `npm run check`: run all validation
+- `npm run build`: emit `dist/`
+- `npm run demo:stable`: run the live stable API demo
+
+## Repository Layout
 
 ```text
-POST https://www.cse.lk/api/companyChartDataByStock
-stockId=378&period=1
+src/              TypeScript client implementation
+test/             Mocked unit tests
+examples/         Runnable live API demos
+tsp/              TypeSpec contract for the clean API
+dist/             Generated package output, ignored by git
+tsp-output/       Generated OpenAPI output, ignored by git
 ```
 
-Observed response shape:
+## Attribution
 
-```json
-{
-  "chartData": [
-    {
-      "h": 54.7,
-      "l": 54.7,
-      "o": null,
-      "s": 57118421,
-      "q": 918,
-      "p": 54.7,
-      "c": -0.1,
-      "pc": -0.18248175182481752,
-      "t": 1783051488212,
-      "n": null,
-      "id": 57118421
-    }
-  ],
-  "id": 378
-}
-```
+Early raw endpoint discovery was based on work from [`GH0STH4CKER/Colombo-Stock-Exchange-CSE-API-Documentation`](https://github.com/GH0STH4CKER/Colombo-Stock-Exchange-CSE-API-Documentation). Credit to that project for mapping the first usable set of CSE web endpoints.
 
-Known working numeric `period` values include `1`, `7`, `30`, `90`, and `365`. String values such as `1D`, `1M`, `3M`, `1Y`, and `YTD` returned `400` in testing.
+This repository is not maintained as a fork. Its purpose is a separate Node.js/TypeScript package with a TypeSpec-described, normalized API surface.
 
-## Usage Example 💻python
+## Disclaimer
 
-### Get detailed stock info by symbol 🔍
-
-```python
-import requests
-
-base_url = "https://www.cse.lk/api/"
-endpoint = "companyInfoSummery"
-
-data = {"symbol": "LOLC.N0000"}
-
-response = requests.post(base_url + endpoint, data=data)
-
-print(f"Status code: {response.status_code}")
-print(response.json())  # Prints the response as a Python dictionary
-```
-
----
-
-## Sample Response: `companyInfoSummery` 📝
-
-```json
-{
-  "reqSymbolInfo": {
-    "symbol": "LOLC.N0000",
-    "name": "L O L C HOLDINGS PLC",
-    "lastTradedPrice": 546.5,
-    "change": -2.5,
-    "changePercentage": -0.455,
-    "marketCap": 259696800000
-  },
-  "reqLogo": {
-    "id": 2168,
-    "path": "upload_logo/378_1601611239.jpeg"
-  },
-  "reqSymbolBetaInfo": {
-    "betaValueSPSL": 1.0227
-  }
-}
-```
-
----
-
-## Contribution 🤝
-
-This is an **unofficial** reverse-engineered API.  
-If you discover more endpoints or useful parameters, please submit a **Pull Request**!  
-Help expand the community knowledge about the Colombo Stock Exchange API. 🚀
-<br>
-[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/donate/?hosted_button_id=FB9KXK4TEAUJ6)
-
----
-
-## Disclaimer ⚠️
-
-- Use responsibly and verify data accuracy with official CSE sources.
-- API endpoints and formats may change without notice.
-- This repository is for educational purposes only.
-
----
-
-[![Stargazers repo roster for @GH0STH4CKER/Colombo-Stock-Exchange-CSE-API-Documentation](https://reporoster.com/stars/GH0STH4CKER/Colombo-Stock-Exchange-CSE-API-Documentation)](https://github.com/GH0STH4CKER/Colombo-Stock-Exchange-CSE-API-Documentation/stargazers)
-
-[![Forkers repo roster for @GH0STH4CKER/Colombo-Stock-Exchange-CSE-API-Documentation](https://reporoster.com/forks/GH0STH4CKER/Colombo-Stock-Exchange-CSE-API-Documentation)](https://github.com/GH0STH4CKER/Colombo-Stock-Exchange-CSE-API-Documentation/network/members)
+The CSE web API is unofficial, undocumented, and can change without notice. Use this package responsibly and verify market data against official CSE sources before relying on it.

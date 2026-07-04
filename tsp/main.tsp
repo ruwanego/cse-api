@@ -82,6 +82,21 @@ model Sector {
   percentage?: float64;
 }
 
+model SecurityCode {
+  id?: int32;
+  name?: string;
+  symbol?: string;
+  active?: int32;
+}
+
+model Security {
+  securityId?: int32;
+  name?: string;
+  symbol?: string;
+  boardId?: int32;
+  deleted?: int32;
+}
+
 model CompanyChart {
   symbol: string;
   securityId: int32;
@@ -101,6 +116,19 @@ model CompanyChartPoint {
   id?: int64;
 }
 
+model MarketChart {
+  index: string;
+  chartId: int32;
+  period: int32;
+  points: MarketChartPoint[];
+}
+
+model MarketChartPoint {
+  date?: int64;
+  value?: float64;
+  percentChange?: float64;
+}
+
 model Announcement {
   id?: int64;
   announcementId?: int64;
@@ -113,6 +141,46 @@ model Announcement {
   path?: string;
 }
 
+model AnnouncementDetail {
+  reqBaseAnnouncement?: Record<unknown>;
+  reqAnnouncementDocs?: Record<unknown>[];
+}
+
+model CorporateAnnouncementCategory {
+  id?: int32;
+  categoryName?: string;
+  pageName?: string;
+  pageView?: string;
+  methodName?: string;
+}
+
+model NewsItem {
+  id?: string;
+  title?: string;
+  shortDescription?: string;
+  publishedDate?: string;
+}
+
+model EventItem {
+  id?: string;
+  eventType?: string;
+  title?: string;
+  body?: string;
+}
+
+model EducationalVideo {
+  id?: string;
+  link?: string;
+  isHome?: boolean;
+  lang?: string;
+}
+
+model WebsiteNotification {
+  id?: string;
+  title?: string;
+  body?: string;
+}
+
 @error
 model CseError is ErrorResponse;
 
@@ -123,6 +191,22 @@ op getCompany(@path symbol: string): Company | CseError;
 @route("/companies/{symbol}/chart")
 @get
 op getCompanyChart(@path symbol: string, @query period: int32): CompanyChart | CseError;
+
+@route("/companies/{symbol}/announcements")
+@get
+op getCompanyAnnouncements(@path symbol: string): Announcement[] | CseError;
+
+@route("/market/chart")
+@get
+op getMarketChart(@query index: string, @query period?: int32): MarketChart | CseError;
+
+@route("/securities/codes")
+@get
+op getSecurityCodes(): SecurityCode[] | CseError;
+
+@route("/securities")
+@get
+op getSecurities(): Security[] | CseError;
 
 @route("/prices/today")
 @get
@@ -171,3 +255,48 @@ op getMostActiveTrades(): PriceRow[] | CseError;
 @route("/announcements/{kind}")
 @get
 op getAnnouncements(@path kind: string): Announcement[] | CseError;
+
+@route("/announcements/detail/{announcementId}")
+@get
+op getAnnouncement(@path announcementId: int32): AnnouncementDetail | CseError;
+
+@route("/announcements/categories/corporate")
+@get
+op getCorporateAnnouncementCategories(): CorporateAnnouncementCategory[] | CseError;
+
+@route("/announcements/categories/smd")
+@get
+op getSmdCategories(): string[] | CseError;
+
+@route("/content/videos")
+@get
+op getEducationalVideos(): EducationalVideo[] | CseError;
+
+@route("/content/notifications")
+@get
+op getNotifications(): WebsiteNotification[] | CseError;
+
+@route("/content/news")
+@get
+op getNews(
+  @query type?: string,
+  @query top?: boolean,
+  @query year?: int32,
+  @query security?: string,
+  @query numberOfRecord?: int32,
+): NewsItem[] | CseError;
+
+@route("/content/events")
+@get
+op getEvents(
+  @query eventType?: string,
+  @query year?: int32,
+): EventItem[] | CseError;
+
+@route("/content/events/top")
+@get
+op getTopEvents(
+  @query eventType?: string,
+  @query year?: int32,
+  @query numberOfRecord?: int32,
+): EventItem[] | CseError;
